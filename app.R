@@ -124,9 +124,9 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
   #   reducedData[,i] = c(0,q)
   # }
   #browser()
-  cnames = reducedData$years
+  cnames = reducedData$years[-1]
   rnames = names(reducedData)[-1]
-  reducedData = t(reducedData[,-1])
+  reducedData = t(reducedData[-1,-1])
   colnames(reducedData) = cnames
   rownames(reducedData) = rnames
   return(reducedData)
@@ -164,7 +164,7 @@ server <- function(input, output,session) {
                  paging = FALSE,
                  ColumnRender = prettyNum,
                  scrollY = "500px",
-                 #scrollX = "800px",
+                 scrollX = TRUE,#"800px",
                  scrollCollapse = TRUE,
                  #      stateSave = TRUE,
                  pageLength = 30#,
