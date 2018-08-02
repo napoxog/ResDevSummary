@@ -7,11 +7,11 @@
 #    http://shiny.rstudio.com/
 #
 
-library(shiny)
 library(readr)
 library(DT)
 library(stats)
 library(xlsx)
+library(shiny)
 # INIT: lists ####
 parNames = list("Накопленная добыча газа",
                     "Накопленная добыча воды",
@@ -126,6 +126,13 @@ getNA <- function(x) {
   return(NA)
 }
 
+getInOut <- function(x,inwell = T) {
+  if(class(x)=='numeric')
+    if(inwell) res = min(0,x)
+    else res = max(0,x)
+  else res = NA
+  return(NA)
+}
 
 filterByPlatform <- function (data = NULL) {
   if(is.null(data)) return(NULL)
@@ -154,16 +161,21 @@ filterByPlatform <- function (data = NULL) {
   
   prod_data = data[id_strt,]
   filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  prod_col = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
-  prod_col = t(diff(rbind(0,t(prod_col))))
+  prod_in = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
+  prod_in = t(diff(rbind(0,t(prod_in))))
   factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  prod_col = cbind(factors,prod_col)
+  prod_in = cbind(factors,prod_in)
+  prod_out = prod_in
+  prod_in = sapply(prod_in,FUN = getInOut,inwell=T)
+  prod_out = sapply(prod_out,FUN = getInOut,inwell=F)
         
-  #browser()
-  prod_col$Group.2 = rep('ввод скважин',times = nrow(prod_col))
+  browser()
+  prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
+  prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
   prod_sum$Group.2 = gsub('Накопленная д','Д', prod_sum$Group.2) 
-  fdf = rbind(prod_sum,pres_avg,prod_col)
+  fdf = rbind(prod_in,prod_out,prod_sum,pres_avg)
   colnames(fdf)[1:2] = c('куст','параметр')
+  #fdf = fdf[order('куст',)]
   return(fdf)  
 }
   
@@ -206,7 +218,8 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
       res = res*10^-9
     }
     if(par %in% diffPars){
-      res = c(0,diff(res))
+      res[is.na(res)] = 0
+      res = c(res[1],diff(res))
     }
     
     return(res)
@@ -238,6 +251,8 @@ getPlatformName <- function (x = NULL) {
 
 options(shiny.encoding = "UTF-8")
 options(encoding = "UTF-8")
+options(shiny.host = "0.0.0.0")
+options(shiny.port = 8080)
 
 server <- function(input, output,session) {
    
@@ -446,7 +461,7 @@ DATE  PAR:WELL  PAR:WELL ...",
      }
    })
    getSaveFilename <- function() {
-     fn = paste0('ProductionSummary_',basename(input$openDataFile$datapath),'-',Sys.Date(), '.txt')
+     fn = paste0('ProductionSummary_',basename(input$openDataFile$datapath),'-',Sys.Date(), '.xlsx')
      return(fn)
    }
    getSaveContent <- function(fname) {
@@ -458,8 +473,8 @@ DATE  PAR:WELL  PAR:WELL ...",
      #Encoding(colnames(data)) <- "UTF-8"
      #Encoding(rownames(data)) <- "UTF-8"
      #Encoding(data[2]) <- "UTF-8"
-     ein= "UTF-8"
-     eout=  "ISO-8859-5"# "WINDOWS-1251"
+     #ein= "UTF-8"
+     #eout=  "ISO-8859-5"# "WINDOWS-1251"
      #colnames(data) = sapply( colnames(data), FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
      #data[2] = sapply( data[2], FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
      #browser()
