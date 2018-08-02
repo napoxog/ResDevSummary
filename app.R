@@ -11,6 +11,7 @@ library(shiny)
 library(readr)
 library(DT)
 library(stats)
+library(xlsx)
 # INIT: lists ####
 parNames = list("Накопленная добыча газа",
                     "Накопленная добыча воды",
@@ -218,7 +219,7 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
   #   q = diff(as.matrix(reducedData[,i])); 
   #   reducedData[,i] = c(0,q)
   # }
-  browser()
+  #browser()
   cnames = reducedData$years[-1]
   rnames = names(reducedData)[-1]
   reducedData = t(reducedData[-1,-1])
@@ -449,7 +450,6 @@ DATE  PAR:WELL  PAR:WELL ...",
      return(fn)
    }
    getSaveContent <- function(fname) {
-     browser()
      if(input$tableMode == 'yearly') 
        data = myReactives$FilteredData
      else if(input$tableMode == 'platform') 
@@ -458,7 +458,15 @@ DATE  PAR:WELL  PAR:WELL ...",
      #Encoding(colnames(data)) <- "UTF-8"
      #Encoding(rownames(data)) <- "UTF-8"
      #Encoding(data[2]) <- "UTF-8"
-     write.csv(x = data,file = fname,row.names = F,fileEncoding = "UTF-8",encodeing = "UTF-8")
+     ein= "UTF-8"
+     eout=  "ISO-8859-5"# "WINDOWS-1251"
+     #colnames(data) = sapply( colnames(data), FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
+     #data[2] = sapply( data[2], FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
+     #browser()
+     
+     #write.csv2( x = data,file = fname,row.names = F,fileEncoding = ein)
+     #write_excel_csv(data,path = fname,delim = '\t',na = 0,col_names = T)
+     write.xlsx(x = data, file = fname)
    }
    
    output$downloadSummary <- downloadHandler(
