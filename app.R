@@ -127,11 +127,13 @@ getNA <- function(x) {
 }
 
 getInOut <- function(x,inwell = T) {
+  dbgmes("x=",x)
   if(class(x)=='numeric')
-    if(inwell) res = min(0,x)
-    else res = max(0,x)
+    if(inwell) if(x>0) res=x else res = 0
+    else res = if(x<0) res=x else res = 0
   else res = NA
-  return(NA)
+  dbgmes("res=",res)
+  return(res)
 }
 
 filterByPlatform <- function (data = NULL) {
@@ -162,13 +164,13 @@ filterByPlatform <- function (data = NULL) {
   prod_data = data[id_strt,]
   filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
   prod_in = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
-  prod_in = t(diff(rbind(0,t(prod_in))))
   factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
+  prod_in = t(diff(rbind(0,t(prod_in))))
+  prod_out = apply(prod_in,MARGIN = c(1,2),FUN = function(x) min(0,x))
+  prod_in = apply(prod_in,MARGIN = c(1,2),FUN = function(x) max(0,x))
   prod_in = cbind(factors,prod_in)
-  prod_out = prod_in
-  prod_in = sapply(prod_in,FUN = getInOut,inwell=T)
-  prod_out = sapply(prod_out,FUN = getInOut,inwell=F)
-        
+  prod_out = cbind(factors,prod_out)
+
   browser()
   prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
   prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
@@ -249,8 +251,8 @@ getPlatformName <- function (x = NULL) {
 }  
 # Define server logic required to draw a histogram
 
-options(shiny.encoding = "UTF-8")
-options(encoding = "UTF-8")
+#options(shiny.encoding = "UTF-8")
+#options(encoding = "UTF-8")
 options(shiny.host = "0.0.0.0")
 options(shiny.port = 8080)
 
@@ -469,19 +471,9 @@ DATE  PAR:WELL  PAR:WELL ...",
        data = myReactives$FilteredData
      else if(input$tableMode == 'platform') 
        data = myReactives$FilteredByPlatform#filterByPlatform(myReactives$FilteredData)
-     #write_delim(data,path = fname,delim = '\t',na = 0,col_names = T)
-     #Encoding(colnames(data)) <- "UTF-8"
-     #Encoding(rownames(data)) <- "UTF-8"
-     #Encoding(data[2]) <- "UTF-8"
-     #ein= "UTF-8"
-     #eout=  "ISO-8859-5"# "WINDOWS-1251"
-     #colnames(data) = sapply( colnames(data), FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
-     #data[2] = sapply( data[2], FUN = function (x,from,to) iconv(x,from,to),from = ein, to=eout)
-     #browser()
-     
-     #write.csv2( x = data,file = fname,row.names = F,fileEncoding = ein)
-     #write_excel_csv(data,path = fname,delim = '\t',na = 0,col_names = T)
-     write.xlsx(x = data, file = fname)
+     # Create WorkBook with Sheets 
+     write.xlsx(sheetName = 'годовая', showNA=FALSE,x = myReactives$FilteredData, file = fname)
+     write.xlsx(sheetName = 'по кустам', showNA=FALSE, append=TRUE ,x = myReactives$FilteredByPlatform, file = fname)
    }
    
    output$downloadSummary <- downloadHandler(
