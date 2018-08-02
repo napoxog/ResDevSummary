@@ -35,7 +35,7 @@ myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars =
 ui <- fluidPage(
    
    # Application title
-   titlePanel("Old Faithful Geyser Data"),
+   titlePanel("Анализ профилей добычи"),
    
    # Sidebar with a slider input for number of bins 
    sidebarLayout(
@@ -82,11 +82,17 @@ ui <- fluidPage(
       
       # Show a plot of the generated distribution
       mainPanel(
-         #plotOutput("distPlot"),
+        tabsetPanel(id = 'output', 
+                    tabPanel(title = "Таблицы", id = 'table',
         radioButtons(inputId = 'tableMode','Отобразить:',choices = tableTypes,inline = T),
         dataTableOutput(outputId = 'dataOutput'),
         downloadButton('downloadSummary', 'Сохранить в файл')
-      )
+                    ),
+        tabPanel(title = "Графики", id = 'plot',
+                 plotOutput("distPlot", height = "500px")
+        )
+        )
+        )
    )
 )
 
@@ -167,28 +173,6 @@ filterByPlatform <- function (data = NULL) {
   pres_avg = getDataSubset(data,pattern = "давление")
   prod_col = getDataSubset(data,pattern = "добыча газа",FUN = getNwells)
 
-  
-  # id_prod = grep(x = data$par,pattern = "добыча")
-  # id_pres = grep(x = data$par,pattern = "давление")
-  # id_strt = grep(x = data$par,pattern = "добыча газа")
-  # 
-  # prod_data = data[id_prod,]
-  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  # prod_sum = aggregate(x = prod_data[,procCols],by = filterList, FUN = getSum)[,c(-1:-2)]
-  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  # prod_sum = cbind(factors,prod_sum)
-  # 
-  # prod_data = data[id_pres,]
-  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  # pres_avg = aggregate(x = prod_data[,procCols],by = filterList, FUN = mean, na.rm = T)[,c(-1:-2)]
-  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  # pres_avg = cbind(factors,pres_avg)
-  # 
-  # prod_data = data[id_strt,]
-  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  # prod_in = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
-  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  
   factors = prod_col[,c(1:2)]
   prod_in = t(diff(rbind(0,t(prod_col[,c(-1:-2)]))))
   prod_out = apply(prod_in,MARGIN = c(1,2),FUN = function(x) min(0,x))
@@ -278,6 +262,64 @@ getPlatformName <- function (x = NULL) {
     if(length(str)==2) return(str[1])
     else return(NA)
 }  
+
+setPaletteTransp <- function(colors = NULL ,alpha = 0.5) {
+  if(is.null(colors)) return(NULL)
+  
+  colors = apply(sapply(colors, col2rgb)/255, 2, 
+                 function(x) rgb(x[1], x[2], x[3], alpha=alpha)) 
+  #dbgmes("transpal=",colors)
+  return(colors)
+}
+
+plotData <- function(data = NULL,pattern=NULL) {
+  if(is.null(data)) return(NULL)
+  
+  colnames(data)[1:2] = c('platf','param')
+  id_res = grep(x = data$param,pattern)
+  
+  data = data[id_res,]
+
+  platfs = unique(data$platf)
+  rem_cols = c(-1,-2)
+  plotData=list()
+  plotData = data.frame(year = as.numeric(colnames(data)[rem_cols]))
+  cols = setPaletteTransp(rainbow(length(unique(data$platf))),alpha = 0.5)
+  
+  i=1
+  for(row in rownames(data)) {
+    if(i>1) q = plotData[i]
+    else q= 0
+    #browser()
+    dbgmes("add=",(q + as.numeric(data[row,rem_cols])))
+    plotData = data.frame(plotData, row = (q + as.numeric(data[row,rem_cols])))
+    color = cols[data[row,1]]
+    par(new = TRUE)
+#    plot(plotData,bty="n",yaxt = "n",t='b', col = color, xlab = "" ,ylab = "")
+#    axis(2,col = color,col.lab = color)
+    i=i+1
+  }
+  xlim = c(min(plotData[[1]]),max(plotData[[1]]))
+  ylim = c(0,1.1*max(plotData[2:length((plotData))]))
+  plot(plotData$year,t='l', xlab = "годы" ,ylab = "добыча газа, млрд куб.м / год", 
+       ylim = ylim,
+       xlim = xlim)
+  #par(new = TRUE)
+  dbgmes("limits=",cbind(xlim,ylim))
+  xx = c(plotData[[1]],rev(plotData[[1]]))
+  #browser()
+  for(row in 1:length(rownames(data))) {
+    if(row==1) y0 = rep(0,length(plotData[[1]]))
+    else y0=plotData[[row]]
+    yy = c(y0,rev(plotData[[row+1]]))
+    #browser()
+    #dbgmes("poly=",cbind(xx,yy))
+    polygon(xx,yy,col = cols[row],border = cols[row])
+    #legend(xlim[2],ylim[1],data[2,])
+    #plot(plotData[row],bty="n",yaxt = "n",t='b', col = cols, xlab = "" ,ylab = "")
+  }
+}
+
 # Define server logic required to draw a histogram
 
 #options(shiny.encoding = "UTF-8")
@@ -286,14 +328,20 @@ options(shiny.host = "0.0.0.0")
 options(shiny.port = 8080)
 
 server <- function(input, output,session) {
-   
+   # PLOT DATA ####
    output$distPlot <- renderPlot({
-      # generate bins based on input$bins from ui.R
-      x    <- faithful[, 2] 
-      bins <- seq(min(x), max(x), length.out = input$bins + 1)
-      
-      # draw the histogram with the specified number of bins
-      hist(x, breaks = bins, col = 'darkgray', border = 'white')
+     #plotData = t(rbind(as.numeric(colnames(myReactives$FilteredByPlatform)[c(-1,-2)]),
+      #                  as.numeric(myReactives$FilteredByPlatform[3,c(-1,-2)])))
+     #browser()
+     plotData(myReactives$FilteredByPlatform,"Добыча газа")
+     
+     # plot(plotData,bty="n",yaxt = "n",t='b', col = "red", xlab = "" ,ylab = "")
+     # axis(2,col = "red",col.lab = "red")
+     # par(new = TRUE)
+     # plotData = t(rbind(as.numeric(colnames(myReactives$FilteredByPlatform)[c(-1,-2)]),
+     #                    as.numeric(myReactives$FilteredByPlatform[4,c(-1,-2)])))
+     # plot(plotData,yaxt = "n",t='b', col = "blue", xlab = "год",ylab = "добыча")
+     # axis(4,col="blue",col.lab = "blue")
    })
    
    output$dataOutput <- renderDataTable({
@@ -308,7 +356,7 @@ server <- function(input, output,session) {
        widetarget = 1
        datacols = colnames(data)[c(-1:-2)]
      }
-     
+     # PLOT MAIN TABLE ####
      if(is.null(data) || nrow(data)<2) return(NULL)
      datatable(data = data,
                height = 30,
@@ -483,6 +531,7 @@ DATE  PAR:WELL  PAR:WELL ...",
                                                    mon=input$startMon,
                                                    pars = names(parNames[input$pars_rows_selected]))
        myReactives$FilteredByPlatform = filterByPlatform(myReactives$FilteredData)
+       # GET DATA ####
        #myReactives$data = reducedData
        #updateDateInput(session = session,
        #                inputId = input$startDate,
