@@ -136,47 +136,75 @@ getInOut <- function(x,inwell = T) {
   return(res)
 }
 
+getDataSubset <- function(data = NULL, pattern="", FUN = mean) {
+  if(is.null(data)) return(NULL)
+     
+  procCols = colnames(data)[c(-1:-3)]
+  id_res = grep(x = data$par,pattern)
+  
+  prod_data = data[id_res,]
+  filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
+  prod_res = aggregate(x = prod_data[,procCols],by = filterList, FUN = FUN)[,c(-1:-2)]
+  #browser()
+  factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
+  prod_res = cbind(factors,prod_res)
+  
+  return(prod_res)
+}
+
 filterByPlatform <- function (data = NULL) {
   if(is.null(data)) return(NULL)
   scalingPars = c("WGPT","WWPT")
   factNames=colnames(data)[c(1:3)]
   colnames(data)[c(1:3)] = c('par','well','platf')
-  platforms = as.numeric(unique(data$'куст'))
-  dbgmes("platforms=",platforms)
-  procCols = colnames(data)[c(-1:-3)]
+  #platforms = as.numeric(unique(data$'куст'))
+  #dbgmes("platforms=",platforms)
+  #procCols = colnames(data)[c(-1:-3)]
   #browser()
-  id_prod = grep(x = data$par,pattern = "добыча")
-  id_pres = grep(x = data$par,pattern = "давление")
-  id_strt = grep(x = data$par,pattern = "добыча газа")
   
-  prod_data = data[id_prod,]
-  filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  prod_sum = aggregate(x = prod_data[,procCols],by = filterList, FUN = getSum)[,c(-1:-2)]
-  factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  prod_sum = cbind(factors,prod_sum)
+  prod_gas = getDataSubset(data,pattern = "добыча газа",FUN = getSum)
+  prod_wat = getDataSubset(data,pattern = "добыча воды",FUN = getSum)
+  pres_avg = getDataSubset(data,pattern = "давление")
+  prod_col = getDataSubset(data,pattern = "добыча газа",FUN = getNwells)
+
   
-  prod_data = data[id_pres,]
-  filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  pres_avg = aggregate(x = prod_data[,procCols],by = filterList, FUN = mean, na.rm = T)[,c(-1:-2)]
-  factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  pres_avg = cbind(factors,pres_avg)
+  # id_prod = grep(x = data$par,pattern = "добыча")
+  # id_pres = grep(x = data$par,pattern = "давление")
+  # id_strt = grep(x = data$par,pattern = "добыча газа")
+  # 
+  # prod_data = data[id_prod,]
+  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
+  # prod_sum = aggregate(x = prod_data[,procCols],by = filterList, FUN = getSum)[,c(-1:-2)]
+  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
+  # prod_sum = cbind(factors,prod_sum)
+  # 
+  # prod_data = data[id_pres,]
+  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
+  # pres_avg = aggregate(x = prod_data[,procCols],by = filterList, FUN = mean, na.rm = T)[,c(-1:-2)]
+  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
+  # pres_avg = cbind(factors,pres_avg)
+  # 
+  # prod_data = data[id_strt,]
+  # filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
+  # prod_in = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
+  # factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
   
-  prod_data = data[id_strt,]
-  filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  prod_in = aggregate(x = prod_data[,procCols],by = filterList, FUN = getNwells)[,c(-1:-2)]
-  factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
-  prod_in = t(diff(rbind(0,t(prod_in))))
+  factors = prod_col[,c(1:2)]
+  prod_in = t(diff(rbind(0,t(prod_col[,c(-1:-2)]))))
   prod_out = apply(prod_in,MARGIN = c(1,2),FUN = function(x) min(0,x))
   prod_in = apply(prod_in,MARGIN = c(1,2),FUN = function(x) max(0,x))
   prod_in = cbind(factors,prod_in)
   prod_out = cbind(factors,prod_out)
 
-  browser()
+  #browser()
   prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
   prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
-  prod_sum$Group.2 = gsub('Накопленная д','Д', prod_sum$Group.2) 
-  fdf = rbind(prod_in,prod_out,prod_sum,pres_avg)
+  prod_gas$Group.2 = gsub('Накопленная д','Д', prod_gas$Group.2) 
+  prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
+  fdf = rbind(prod_in,prod_out,prod_gas,prod_wat,pres_avg)
   colnames(fdf)[1:2] = c('куст','параметр')
+  fdf = fdf[order(fdf[1]),]
+  #browser()
   #fdf = fdf[order('куст',)]
   return(fdf)  
 }
@@ -237,6 +265,7 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
   #browser()
   cnames = reducedData$years[-1]
   rnames = names(reducedData)[-1]
+  #params = gsub('Накопленная д','Д', params) 
   reducedData = t(reducedData[-1,-1])
   #rownames(reducedData) = rnames
   reducedData=data.frame(params,wells,platforms,reducedData)
