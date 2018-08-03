@@ -13,11 +13,23 @@ library(stats)
 library(xlsx)
 library(shiny)
 # INIT: lists ####
-parNames = list("Накопленная добыча газа",
-                    "Накопленная добыча воды",
-                    "Пластовое давление",
-                    "Устьевое давление")
-names(parNames) = c ( "WGPT","WWPT","WBP9","WTHP" )
+parNames = list("Добыча газа",
+                "Добыча воды",
+                "Пластовое давление (9 точек)",
+                "Пластовое давление (5 точек)",
+                "Пластовое давление (4 точки)",
+                "Пластовое давление (3 точки)",
+                "Устьевое давление")
+names(parNames) = c ( "WGPT",
+                      "WWPT",
+                      "WBP9",
+                      "WBP4",
+                      "WBP5",
+                      "WBP3",
+                      "WTHP" )
+
+scalingPars = c("WGPT")
+diffPars = c("WGPT","WWPT")
 
 tableTypes = list('yearly','platform')
 names(tableTypes) = c('годичная','по кустам')
@@ -52,9 +64,9 @@ ui <- fluidPage(
                              "Начальная дата:",
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", spacer_wid,"px;"),HTML("<br>")),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startDay',label = 'день', choices = dayNames)),
-                             selectInput(inputId = 'startDay',label = 'день', choices = dayNames),
+                             #selectInput(inputId = 'startDay',label = 'день', choices = dayNames),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startMon',label = 'месяц', choices = monNames))
-                             selectInput(inputId = 'startMon',label = 'месяц', choices = monNames),
+                             #selectInput(inputId = 'startMon',label = 'месяц', choices = monNames),
 #                             dateInput(inputId = 'startDate',label = 'Начальная дата',
 #                                        value = '2000-01-01',format = 'dd M'),
                              #dateRangeInput(inputId = 'startDate',,label = 'Начальная дата',
@@ -148,17 +160,19 @@ getDataSubset <- function(data = NULL, pattern="", FUN = mean) {
   procCols = colnames(data)[c(-1:-3)]
   id_res = grep(x = data$par,pattern)
   
-  prod_data = data[id_res,]
-  filterList = list( unlist(prod_data[,3]),unlist(prod_data[,1]))
-  prod_res = aggregate(x = prod_data[,procCols],by = filterList, FUN = FUN)[,c(-1:-2)]
-  #browser()
-  factors = aggregate(x = prod_data[,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
+  prod_data = data[id_res,procCols]
+  if(nrow(prod_data)<1) return(NULL)
+  #dbgmes(pattern,length(prod_data))
+  filterList = list( unlist(data[id_res,3]),unlist(data[id_res,1]))
+  prod_res = aggregate(x = prod_data,by = filterList, FUN = FUN)[,c(-1:-2)]
+  factors = aggregate(x = data[id_res,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
   prod_res = cbind(factors,prod_res)
+  #browser()
   
   return(prod_res)
 }
 
-filterByPlatform <- function (data = NULL) {
+getFilteredByPaltform <- function (data = NULL) {
   if(is.null(data)) return(NULL)
   scalingPars = c("WGPT","WWPT")
   factNames=colnames(data)[c(1:3)]
@@ -167,61 +181,90 @@ filterByPlatform <- function (data = NULL) {
   #dbgmes("platforms=",platforms)
   #procCols = colnames(data)[c(-1:-3)]
   #browser()
+  #dbgmes("data=",dim(data))
+  prod_gas = getDataSubset(data,pattern = "обыча газа",FUN = getSum)
+  prod_wat = getDataSubset(data,pattern = "обыча воды",FUN = getSum)
+  pres_avg = getDataSubset(data,pattern = "авление")
+  prod_col = getDataSubset(data,pattern = "обыча газа",FUN = getNwells)
   
-  prod_gas = getDataSubset(data,pattern = "добыча газа",FUN = getSum)
-  prod_wat = getDataSubset(data,pattern = "добыча воды",FUN = getSum)
-  pres_avg = getDataSubset(data,pattern = "давление")
-  prod_col = getDataSubset(data,pattern = "добыча газа",FUN = getNwells)
-
-  factors = prod_col[,c(1:2)]
-  prod_in = t(diff(rbind(0,t(prod_col[,c(-1:-2)]))))
-  prod_out = apply(prod_in,MARGIN = c(1,2),FUN = function(x) min(0,x))
-  prod_in = apply(prod_in,MARGIN = c(1,2),FUN = function(x) max(0,x))
-  prod_in = cbind(factors,prod_in)
-  prod_out = cbind(factors,prod_out)
+  #dbgmes("prod_col=",length(prod_col))
+  #dbgmes("prod_gas=",length(prod_gas))
+  #dbgmes("prod_wat=",length(prod_wat))
+  #dbgmes("pres_avg=",length(pres_avg))
+  
+  resList = c()
+  if(!is.null(prod_col)) {
+    factors = prod_col[,c(1:2)]
+    prod_in = t(diff(rbind(0,t(prod_col[,c(-1:-2)]))))
+    prod_out = apply(prod_in,MARGIN = c(1,2),FUN = function(x) min(0,x))
+    prod_in = apply(prod_in,MARGIN = c(1,2),FUN = function(x) max(0,x))
+    prod_in = cbind(factors,prod_in)
+    prod_out = cbind(factors,prod_out)
+    prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
+    prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
+    resList = rbind(resList,rbind(prod_in,prod_out))
+  }
+  if(!is.null(prod_gas)) {
+    #prod_gas$Group.2 = gsub('Накопленная д','Д', prod_gas$Group.2) 
+    resList = rbind(resList,prod_gas)
+  }
+  if(!is.null(prod_wat)) {
+    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
+    resList = rbind(resList,prod_wat)
+  }
+  if(!is.null(pres_avg)) {
+    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
+    resList = rbind(resList,pres_avg)
+  }
+  
 
   #browser()
-  prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
-  prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
-  prod_gas$Group.2 = gsub('Накопленная д','Д', prod_gas$Group.2) 
-  prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
-  fdf = rbind(prod_in,prod_out,prod_gas,prod_wat,pres_avg)
+  #fdf = rbind(prod_in,prod_out,prod_gas,prod_wat,pres_avg)
+  fdf = data.frame(rbind(resList))
   colnames(fdf)[1:2] = c('куст','параметр')
+  colnames(fdf)[c(-1,-2)] = colnames(data)[c(-1,-2,-3)]
   fdf = fdf[order(fdf[1]),]
-  #browser()
-  #fdf = fdf[order('куст',)]
   return(fdf)  
 }
   
-getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
+getFilteredData <- function(data=NULL,day=1,mon=1,pars = parNames) {
   if(is.null(data)) return(NULL)
-  if(is.null(pars) || length(pars)<1) pars = names(parNames)
-  scalingPars = c("WGPT")
-  diffPars = c("WGPT","WWPT")
+  #browser()
+  #if(is.null(pars) || length(pars)<1) pars = names(parNames)
+  #else pars = names(parNames[pars])
+  #browser()
+  pars = names(pars)
+  #dbgmes("filter=",pars)
   #dataProduction[1,] = 0
   #browser()
   #DP = data[,-1]
   #browser()
-  colnames = strsplit(x = names(data[-1]),':')
-  #params =  sapply(colnames,function(x) parNames[[x[1]]])
-  params =  sapply(colnames,function(x) parNames[[x[1]]])
-  wells =  sapply(colnames,function(x) x[2])
-  platforms = sapply(wells,getPlatformName)
   years = sapply(data$DATE,function(x) as.numeric(format(x, "%Y")))
   days = sapply(data$DATE,function(x) as.numeric(format(x, "%d")))
   mons = sapply(data$DATE,function(x) as.numeric(format(x, "%m")))
-  DP = cbind(data,years,mons,days)
+  DP = cbind(years,mons,days,data)
   #browser()
   #yearlyData[,!names(yearlyData) %in% c('years','mons','days')]
   procNames = names(DP)[(!names(DP) %in% c('years','mons','days','DATE'))]
   #procNames = names(DP)[(!procNames %in% c('years','mons','days','DATE'))]
-  prcnm = list()
-  for(i in 1:length(pars))
-    prcnm = append (prcnm,grep(pars[i],procNames,value=TRUE))
-  procNames = unlist(prcnm)
+  # prcnm = list()
+  # for(i in 1:length(pars))
+  #   prcnm = append (prcnm,grep(pars[i],procNames,value=TRUE))
+  # procNames = unlist(prcnm)
   #browser()
+  # dbgmes("dayFilter=",day)
+  # dbgmes("dayFilter=",DP$days)
+  # dbgmes("monFilter=",mon)
+  # dbgmes("monFilter=",DP$mons)
   reducedData = DP[(DP$days == day & DP$mons == mon),]
   reducedYears = years[(DP$days == day & DP$mons == mon)]
+  
+  colnames = strsplit(x = names(reducedData[c(-1:-4)]),':')
+  #params =  sapply(colnames,function(x) parNames[[x[1]]])
+  #params =  unlist(sapply(colnames,function(x) parNames[[x[1]]]))
+  params =  unlist(sapply(colnames,function(x) x[1]))
+  wells =  sapply(colnames,function(x) x[2])
+  platforms = sapply(wells,getPlatformName)
   #reducedData = sapply(reducedData,function (x) x*10^-9)
   # calc yearly diff
   #getParName(procNames[1])
@@ -239,13 +282,7 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
     return(res)
     })
   reducedData = cbind(years = reducedYears,reducedData)
-  #                    sapply(procNames,function(x) diff(reducedData[,x]) ))
   reducedData = data.frame(reducedData)
-  # for (i in 1:length(names(reducedData))) 
-  # {
-  #   q = diff(as.matrix(reducedData[,i])); 
-  #   reducedData[,i] = c(0,q)
-  # }
   #browser()
   cnames = reducedData$years[-1]
   rnames = names(reducedData)[-1]
@@ -253,6 +290,12 @@ getFilteredData <- function(data=NULL,day=1,mon=1,pars = names(parNames)) {
   reducedData = t(reducedData[-1,-1])
   #rownames(reducedData) = rnames
   reducedData=data.frame(params,wells,platforms,reducedData)
+  #browser()
+  reducedData=reducedData[reducedData$params %in% pars,]
+  #reducedData$params = sapply(reducedData$params,function(x) parNames[[x]])
+  reducedData$params = unlist(lapply(X = as.character(reducedData$params),
+                                     FUN = function(x) parNames[x]))
+  #browser()
   colnames(reducedData) = c('Параметр','скважина','куст',cnames)
   return(reducedData)
 }
@@ -279,7 +322,10 @@ plotData <- function(data = NULL,pattern=NULL) {
   id_res = grep(x = data$param,pattern)
   
   data = data[id_res,]
-
+  
+  dbgmes("data=",dim(data))
+  if(dim(data)[1]<3) return(NULL)
+  #browser()
   platfs = unique(data$platf)
   rem_cols = c(-1,-2)
   plotData=list()
@@ -291,7 +337,7 @@ plotData <- function(data = NULL,pattern=NULL) {
     if(i>1) q = plotData[i]
     else q= 0
     #browser()
-    dbgmes("add=",(q + as.numeric(data[row,rem_cols])))
+    #dbgmes("add=",(q + as.numeric(data[row,rem_cols])))
     plotData = data.frame(plotData, row = (q + as.numeric(data[row,rem_cols])))
     color = cols[data[row,1]]
     par(new = TRUE)
@@ -301,6 +347,7 @@ plotData <- function(data = NULL,pattern=NULL) {
   }
   xlim = c(min(plotData[[1]]),max(plotData[[1]]))
   ylim = c(0,1.1*max(plotData[2:length((plotData))]))
+  #browser()
   plot(plotData$year,t='l', xlab = "годы" ,ylab = "добыча газа, млрд куб.м / год", 
        ylim = ylim,
        xlim = xlim)
@@ -330,20 +377,10 @@ options(shiny.port = 8080)
 server <- function(input, output,session) {
    # PLOT DATA ####
    output$distPlot <- renderPlot({
-     #plotData = t(rbind(as.numeric(colnames(myReactives$FilteredByPlatform)[c(-1,-2)]),
-      #                  as.numeric(myReactives$FilteredByPlatform[3,c(-1,-2)])))
      #browser()
      plotData(myReactives$FilteredByPlatform,"Добыча газа")
-     
-     # plot(plotData,bty="n",yaxt = "n",t='b', col = "red", xlab = "" ,ylab = "")
-     # axis(2,col = "red",col.lab = "red")
-     # par(new = TRUE)
-     # plotData = t(rbind(as.numeric(colnames(myReactives$FilteredByPlatform)[c(-1,-2)]),
-     #                    as.numeric(myReactives$FilteredByPlatform[4,c(-1,-2)])))
-     # plot(plotData,yaxt = "n",t='b', col = "blue", xlab = "год",ylab = "добыча")
-     # axis(4,col="blue",col.lab = "blue")
    })
-   
+   #dataOutput <- renderDataTable####
    output$dataOutput <- renderDataTable({
      widetarget = 0
      if(input$tableMode == 'yearly'){
@@ -357,6 +394,7 @@ server <- function(input, output,session) {
        datacols = colnames(data)[c(-1:-2)]
      }
      # PLOT MAIN TABLE ####
+     #browser()
      if(is.null(data) || nrow(data)<2) return(NULL)
      datatable(data = data,
                height = 30,
@@ -405,7 +443,18 @@ server <- function(input, output,session) {
      
      #%>% formatDate(table = myReactives$data,columns =  1, method = "toLocaleDateString")
    })
+   #input$wells ####
+   observeEvent(input$wells, {
+     dbgmes("wells=",myReactives$wells)
+   })
+   #myReactives$pars####
+   observeEvent(myReactives$pars, {
+     dbgmes("myReactives$pars=",myReactives$pars)
+   })
    
+   #dtParsProxy = dataTableProxy("pars")  
+   
+   #renderDataTable wells####
    output$wells <-renderDataTable({
      datatable(myReactives$wells,
                height = 15,
@@ -429,7 +478,7 @@ server <- function(input, output,session) {
                )#,
      )
      })
-   
+   #renderDataTable platforms ####
    output$platforms <-renderDataTable({
      datatable(myReactives$platforms,
                height = 15,
@@ -453,7 +502,7 @@ server <- function(input, output,session) {
                )#,
      )
    })
-
+   #renderDataTable pars####
    output$pars <-renderDataTable({
      #browser()
      datatable(myReactives$pars,
@@ -461,7 +510,7 @@ server <- function(input, output,session) {
                class = "compact",
                rownames = FALSE,
                filter = 'none',
-               editable = TRUE,
+               editable = FALSE,
                options = list(
                  pagingType = "simple",
                  paging = FALSE,
@@ -479,7 +528,7 @@ server <- function(input, output,session) {
                
      )
      })
-   
+   #input$assignPlatform, {####
    observeEvent(input$assignPlatform, {
      if(is.null(input$wells_rows_selected)) {
        showNotification("Выберите скважины в списке", type = 'warning')
@@ -488,15 +537,23 @@ server <- function(input, output,session) {
        myReactives$wells$platform[input$wells_rows_selected] = input$platformIdx
      }
    })
-   
+   #input$pars, {####
    observeEvent(input$pars_rows_selected, {
-     myReactives$FilteredData = getFilteredData(data = myReactives$data ,
-                                                day = input$startDay,
-                                                mon=input$startMon,
-                                                pars = names(parNames[input$pars_rows_selected]))
+   #observeEvent(input$pars, {
+     #browser()
+     names = myReactives$pars$name
+     names(names) = rownames(myReactives$pars)
+     if(is.null(input$pars_rows_selected)) sel_pars = names
+     else sel_pars = names[input$pars_rows_selected]
+     myReactives$FilteredData <- getFilteredData(data = myReactives$data ,
+                                                day = 1,#input$startDay,
+                                                mon = 1,#input$startMon,
+                                                pars = sel_pars)
+     myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
      
    })
    
+   # GET DATA ####
    observeEvent(input$openDataFile, {
      dataProduction  <- read_delim(input$openDataFile$datapath, "\t", escape_double = FALSE, 
                                 col_types = cols(
@@ -526,12 +583,14 @@ DATE  PAR:WELL  PAR:WELL ...",
        myReactives$wells = data.frame(well = wells,platform = as.numeric(platforms))
        myReactives$pars = data.frame(param = pars,name = names)
        myReactives$data = dataProduction[-1,]
+       #browser()
+       if(is.null(input$pars_rows_selected)) sel_pars = names
+       else sel_pars = names[input$pars_rows_selected]
        myReactives$FilteredData <- getFilteredData(data = myReactives$data ,
-                                                   day = input$startDay,
-                                                   mon=input$startMon,
-                                                   pars = names(parNames[input$pars_rows_selected]))
-       myReactives$FilteredByPlatform = filterByPlatform(myReactives$FilteredData)
-       # GET DATA ####
+                                                   day = 1,#input$startDay,
+                                                   mon = 1,#input$startMon,
+                                                   pars = sel_pars)
+       myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
        #myReactives$data = reducedData
        #updateDateInput(session = session,
        #                inputId = input$startDate,
