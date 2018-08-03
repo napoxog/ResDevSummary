@@ -372,7 +372,7 @@ plotData <- function(data = NULL,pattern=NULL) {
 #options(shiny.encoding = "UTF-8")
 #options(encoding = "UTF-8")
 options(shiny.host = "0.0.0.0")
-options(shiny.port = 8080)
+options(shiny.port = 34107)
 
 server <- function(input, output,session) {
    # PLOT DATA ####
