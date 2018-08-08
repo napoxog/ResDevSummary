@@ -33,14 +33,14 @@ names(parNames) = c ( "WGPT",
 scalingPars = c("WGPT")
 diffPars = c("WGPT","WWPT")
 
-tableTypes = list('yearly','platform')
-names(tableTypes) = c('годичная','по кустам')
+tableTypes = list('periodic','platform')
+names(tableTypes) = c('за период','по кустам')
 
 dayNames = c(1:31)
 monNames = c(1:12)
 names(monNames) = date_names_lang("ru")$mon_ab
 
-periodNames = c('y','q','m')
+periodNames = c(12,4,1)
 names(periodNames) = c("год",
                        "квартал",
                        "месяц")
@@ -55,7 +55,7 @@ myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars =
 ui <- fluidPage(
    
    # Application title
-   titlePanel("Анализ профилей добычи"),
+   titlePanel("Своднная добыча"),
    
    # Sidebar with a slider input for number of bins 
    sidebarLayout(
@@ -63,16 +63,18 @@ ui <- fluidPage(
         tabsetPanel(id = 'input', 
                     tabPanel(title = "Данные", id = 'data',
                              #actionButton()
-                             fileInput(
-                               "openDataFile",
-                               "Загрузить накопленную добычу:",
-                               accept = '.txt',
-                               buttonLabel = "Открыть..."
-                             ),
+                             div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/2),"px;"),
+                                 fileInput(
+                                 "openDataFile",
+                                 "Загрузить накопленную добычу:",
+                                 accept = '.txt',
+                                 buttonLabel = "Открыть..."
+                             )),
                              #"Начальная дата:",
-                             #div(style=paste0("display: inline-block;vertical-align:top; width: ", spacer_wid,"px;"),HTML("<br>")),
+                             div(style=paste0("display: inline-block;vertical-align:top; width: ", spacer_wid,"px;"),HTML("<br>")),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startDay',label = 'день', choices = dayNames)),
-                             selectInput(inputId = 'period',label = 'Период', choices = periodNames),
+                             div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),
+                                 selectInput(inputId = 'period',label = 'Период', choices = periodNames)),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startMon',label = 'месяц', choices = monNames))
                              #selectInput(inputId = 'startMon',label = 'месяц', choices = monNames),
 #                             dateInput(inputId = 'startDate',label = 'Начальная дата',
@@ -205,6 +207,7 @@ getFilteredByPaltform <- function (data = NULL) {
   #dbgmes("prod_col=",(prod_col[,-2]))
   
   resList = c()
+  
   if(!is.null(prod_col)) {
     factors = prod_col[,c(1:2)]
     prod_in = t(diff(rbind(0,t(prod_col[,c(-1:-2)]))))
@@ -215,19 +218,22 @@ getFilteredByPaltform <- function (data = NULL) {
     prod_in$Group.2 = rep('ввод скважин',times = nrow(prod_in))
     prod_out$Group.2 = rep('выбытие скважин',times = nrow(prod_out))
     resList = rbind(resList,rbind(prod_in,prod_out))
+    ## empty other parameters if there is no wells in production 
+    procCols = colnames(data)[c(-1:-3)]
+    procPlatf = as.numeric(unique(pres_avg[,1]))
+    for(ip in procPlatf)
+      for(x in procCols) {
+        if(prod_col[ip,x]<1) {
+          if(!is.null(pres_avg)) pres_avg[ip,x]=NA;
+          if(!is.null(prod_gas)) prod_gas[ip,x]=NA;
+          if(!is.null(prod_wat)) prod_wat[ip,x]=NA;
+        }
+        #dbgmes("i,x,pp,pc=",c(ip,x,pres_avg[ip,x],prod_col[ip,x])) 
+      }
   }
-  if(!is.null(prod_gas)) {
-    #prod_gas$Group.2 = gsub('Накопленная д','Д', prod_gas$Group.2) 
-    resList = rbind(resList,prod_gas)
-  }
-  if(!is.null(prod_wat)) {
-    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
-    resList = rbind(resList,prod_wat)
-  }
-  if(!is.null(pres_avg)) {
-    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2)
-    resList = rbind(resList,pres_avg)
-  }
+  if(!is.null(prod_gas)) resList = rbind(resList,prod_gas)
+  if(!is.null(prod_wat)) resList = rbind(resList,prod_wat)
+  if(!is.null(pres_avg)) resList = rbind(resList,pres_avg)
   
 
   #browser()
@@ -239,7 +245,7 @@ getFilteredByPaltform <- function (data = NULL) {
   return(fdf)  
 }
   
-getFilteredData <- function(data=NULL,day=1,mon=1,pars = parNames) {
+getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
   if(is.null(data)) return(NULL)
   #browser()
   #if(is.null(pars) || length(pars)<1) pars = names(parNames)
@@ -337,9 +343,11 @@ plotData <- function(data = NULL,pattern=NULL) {
   
   dbgmes("data=",dim(data))
   if(dim(data)[1]<3) return(NULL)
-  #browser()
   platfs = unique(data$platf)
   rem_cols = c(-1,-2)
+  #browser()
+  data = cbind(data[,-1*rem_cols],apply(data[,rem_cols],MARGIN = c(1,2), 
+        FUN = function(x) if(is.na(x)) return(0) else return(x)))
   plotData=list()
   plotData = data.frame(year = as.numeric(colnames(data)[rem_cols]))
   cols = setPaletteTransp(rainbow(length(unique(data$platf))),alpha = 0.5)
@@ -359,12 +367,12 @@ plotData <- function(data = NULL,pattern=NULL) {
   }
   xlim = c(min(plotData[[1]]),max(plotData[[1]]))
   ylim = c(0,1.1*max(plotData[2:length((plotData))]))
+  dbgmes("limits=",cbind(xlim,ylim))
   #browser()
   plot(plotData$year,t='l', xlab = "годы" ,ylab = "добыча газа, млрд куб.м / год", 
        ylim = ylim,
        xlim = xlim)
   #par(new = TRUE)
-  dbgmes("limits=",cbind(xlim,ylim))
   xx = c(plotData[[1]],rev(plotData[[1]]))
   #browser()
   for(row in 1:length(rownames(data))) {
@@ -395,7 +403,7 @@ server <- function(input, output,session) {
    #dataOutput <- renderDataTable####
    output$dataOutput <- renderDataTable({
      widetarget = 0
-     if(input$tableMode == 'yearly'){
+     if(input$tableMode == 'periodic'){
        data = myReactives$FilteredData
        widetarget = 0
        datacols = colnames(data)[c(-1:-3)]
@@ -634,7 +642,7 @@ DATE  PAR:WELL  PAR:WELL ...",
      return(fn)
    }
    getSaveContent <- function(fname) {
-     if(input$tableMode == 'yearly') 
+     if(input$tableMode == 'period') 
        data = myReactives$FilteredData
      else if(input$tableMode == 'platform') 
        data = myReactives$FilteredByPlatform#filterByPlatform(myReactives$FilteredData)
