@@ -19,14 +19,16 @@ parNames = list("Добыча газа",
                 "Пластовое давление (5 точек)",
                 "Пластовое давление (4 точки)",
                 "Пластовое давление (3 точки)",
-                "Устьевое давление")
+                "Устьевое давление",
+                "Забойное давление")
 names(parNames) = c ( "WGPT",
                       "WWPT",
                       "WBP9",
-                      "WBP4",
                       "WBP5",
+                      "WBP4",
                       "WBP3",
-                      "WTHP" )
+                      "WTHP",
+                      "WBHP")
 
 scalingPars = c("WGPT")
 diffPars = c("WGPT","WWPT")
@@ -37,6 +39,12 @@ names(tableTypes) = c('годичная','по кустам')
 dayNames = c(1:31)
 monNames = c(1:12)
 names(monNames) = date_names_lang("ru")$mon_ab
+
+periodNames = c('y','q','m')
+names(periodNames) = c("год",
+                       "квартал",
+                       "месяц")
+
 
 input_wid = 500
 spacer_wid = 30
@@ -61,10 +69,10 @@ ui <- fluidPage(
                                accept = '.txt',
                                buttonLabel = "Открыть..."
                              ),
-                             "Начальная дата:",
+                             #"Начальная дата:",
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", spacer_wid,"px;"),HTML("<br>")),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startDay',label = 'день', choices = dayNames)),
-                             #selectInput(inputId = 'startDay',label = 'день', choices = dayNames),
+                             selectInput(inputId = 'period',label = 'Период', choices = periodNames),
                              #div(style=paste0("display: inline-block;vertical-align:top; width: ", as.integer(input_wid/4),"px;"),selectInput(inputId = 'startMon',label = 'месяц', choices = monNames))
                              #selectInput(inputId = 'startMon',label = 'месяц', choices = monNames),
 #                             dateInput(inputId = 'startDate',label = 'Начальная дата',
@@ -131,12 +139,9 @@ getNwells <- function (x) {
 }
 
 getSum <- function(x) {
-  #dbgmes("x=",x)
   if(class(x)=='numeric')
     res = sum(x,na.rm = T)
   else res = NA
-  #browser()
-  #dbgmes("res=",res)
   return(res)
 }
 
@@ -144,13 +149,20 @@ getNA <- function(x) {
   return(NA)
 }
 
+getAvg <- function(x) {
+  if(class(x)=='numeric')
+    res = mean(x,na.rm = T)
+  else res = NA
+  return(res)
+}
+
 getInOut <- function(x,inwell = T) {
-  dbgmes("x=",x)
+  #dbgmes("x=",x)
   if(class(x)=='numeric')
     if(inwell) if(x>0) res=x else res = 0
     else res = if(x<0) res=x else res = 0
   else res = NA
-  dbgmes("res=",res)
+  #dbgmes("res=",res)
   return(res)
 }
 
@@ -162,7 +174,7 @@ getDataSubset <- function(data = NULL, pattern="", FUN = mean) {
   
   prod_data = data[id_res,procCols]
   if(nrow(prod_data)<1) return(NULL)
-  #dbgmes(pattern,length(prod_data))
+  
   filterList = list( unlist(data[id_res,3]),unlist(data[id_res,1]))
   prod_res = aggregate(x = prod_data,by = filterList, FUN = FUN)[,c(-1:-2)]
   factors = aggregate(x = data[id_res,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
@@ -184,13 +196,13 @@ getFilteredByPaltform <- function (data = NULL) {
   #dbgmes("data=",dim(data))
   prod_gas = getDataSubset(data,pattern = "обыча газа",FUN = getSum)
   prod_wat = getDataSubset(data,pattern = "обыча воды",FUN = getSum)
-  pres_avg = getDataSubset(data,pattern = "авление")
+  pres_avg = getDataSubset(data,pattern = "авление",FUN = getAvg)
   prod_col = getDataSubset(data,pattern = "обыча газа",FUN = getNwells)
   
-  #dbgmes("prod_col=",length(prod_col))
-  #dbgmes("prod_gas=",length(prod_gas))
-  #dbgmes("prod_wat=",length(prod_wat))
-  #dbgmes("pres_avg=",length(pres_avg))
+  #dbgmes("prod_gas=",(prod_gas[,-2]))
+  #dbgmes("prod_wat=",(prod_wat[,-2]))
+  #dbgmes("pres_avg=",(pres_avg[,-2]))
+  #dbgmes("prod_col=",(prod_col[,-2]))
   
   resList = c()
   if(!is.null(prod_col)) {
@@ -213,7 +225,7 @@ getFilteredByPaltform <- function (data = NULL) {
     resList = rbind(resList,prod_wat)
   }
   if(!is.null(pres_avg)) {
-    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2) 
+    #prod_wat$Group.2 = gsub('Накопленная д','Д', prod_wat$Group.2)
     resList = rbind(resList,pres_avg)
   }
   
@@ -372,7 +384,7 @@ plotData <- function(data = NULL,pattern=NULL) {
 #options(shiny.encoding = "UTF-8")
 #options(encoding = "UTF-8")
 options(shiny.host = "0.0.0.0")
-options(shiny.port = 8080)
+options(shiny.port = 31337)
 
 server <- function(input, output,session) {
    # PLOT DATA ####
@@ -396,12 +408,13 @@ server <- function(input, output,session) {
      # PLOT MAIN TABLE ####
      #browser()
      if(is.null(data) || nrow(data)<2) return(NULL)
+     #dbgmes("myReactives$Maindata=",data)
      datatable(data = data,
                height = 30,
                class = "compact",
                rownames = FALSE,
                selection = list (
-                 mode = 'multiple',
+                 mode = 'none',
                  #      selection  = sr,
                  target = 'row'
                ),
@@ -414,8 +427,21 @@ server <- function(input, output,session) {
                  scrollCollapse = TRUE,
                  #      stateSave = TRUE,
                  pageLength = 30,
-                 autoWidth = TRUE,
-                 columnDefs = list(list(width = '200px', targets = widetarget))#,
+                 autoWidth = TRUE
+                 ,columnDefs = list(list(width = '200px', targets = widetarget)
+#                                    ,list(targets = c(4:ncol(data)), render = JS(
+# "function (data,type, row, meta) {
+#  function decimalAdjust(type, value, exp) {
+# if (typeof exp === 'undefined' || +exp === 0) {
+#       return Math[type](value);
+#     }
+# if (!Math.round10) {
+#     Math.round10 = function(value, exp) {
+#       return decimalAdjust('round', value, exp);
+#     };
+#   }console.log(Math.round10(data);
+# return Math.round10(data,-3);"))
+                                   )#,
                  # columnDefs = list(
                  #   list(visible = FALSE, targets = c(2:3)),
                  #   list(orderable = FALSE, className = 'details-control', targets = 0)
@@ -439,8 +465,11 @@ server <- function(input, output,session) {
                #               });"
                # 
                # )
-     ) #%>%  formatRound(columns = c(4:ncol(data)),digits = 5)#  %>% formatStyle(columns = c(widetarget), width='200px') 
-     
+     ) #%>% formatRound(columns = c(4:ncol(data)),digits = 5) #%>% 
+       #formatStyle(columns = c(widetarget), '300px') %>% 
+       #formatStyle(columns = c(1:ncol(data)), valueColumns = 3,
+      #             backgroundColor = styleEqual(c(1:length(unique(data[,3]))), c('gray20', 'gray50','gray80')))
+      #%>%  formatRound(columns = c(4:ncol(data)),digits = 5) 
      #%>% formatDate(table = myReactives$data,columns =  1, method = "toLocaleDateString")
    })
    #input$wells ####
@@ -462,10 +491,11 @@ server <- function(input, output,session) {
                rownames = FALSE,
                filter = 'none',
                editable = F,
+               
                options = list(
                  pagingType = "simple",
                  paging = FALSE,
-                 ColumnRender = prettyNum,
+                 #ColumnRender = prettyNum,
                  scrollY = "400px",
                  #scrollX = "800px",
                  scrollCollapse = TRUE,
