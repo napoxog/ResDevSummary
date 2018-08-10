@@ -40,10 +40,13 @@ dayNames = c(1:31)
 monNames = c(1:12)
 names(monNames) = date_names_lang("ru")$mon_ab
 
-periodNames = c(12,4,1)
+periodNames = c(12,6,3,1)
 names(periodNames) = c("год",
+                       "пол года",
                        "квартал",
                        "месяц")
+periodAbbr = c('.','.','.','.')
+names(periodAbbr) = names(periodNames)
 
 
 input_wid = 500
@@ -263,30 +266,30 @@ getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
   DP = cbind(years,mons,days,data)
   #browser()
   #yearlyData[,!names(yearlyData) %in% c('years','mons','days')]
-  procNames = names(DP)[(!names(DP) %in% c('years','mons','days','DATE'))]
-  #procNames = names(DP)[(!procNames %in% c('years','mons','days','DATE'))]
-  # prcnm = list()
-  # for(i in 1:length(pars))
-  #   prcnm = append (prcnm,grep(pars[i],procNames,value=TRUE))
-  # procNames = unlist(prcnm)
+  procCols = names(DP)[(!names(DP) %in% c('years','mons','days','DATE'))]
   #browser()
   # dbgmes("dayFilter=",day)
   # dbgmes("dayFilter=",DP$days)
   # dbgmes("monFilter=",mon)
   # dbgmes("monFilter=",DP$mons)
-  reducedData = DP[(DP$days == day & DP$mons == mon),]
-  reducedYears = years[(DP$days == day & DP$mons == mon)]
+  ### Periodic filter ####
+  #reducedData = DP[(DP$days == day & DP$mons == mon),]
+  #reducedYears = years[(DP$days == day & DP$mons == mon)]
+
+  # get set of check months of 1st day
+  checkDate = (seq(1:floor(12 / period))*period+1) %% 12
+  reducedData = DP[(DP$days == 1 & (DP$mons %in% checkDate)),]
+  reducedYears = years[(DP$days == 1 & (DP$mons %in% checkDate))]
+  reducedMonts = mons[(DP$days == 1 & (DP$mons %in% checkDate))]
+  #browser()
   
+  sep = periodAbbr[which(periodNames == period)]
   colnames = strsplit(x = names(reducedData[c(-1:-4)]),':')
-  #params =  sapply(colnames,function(x) parNames[[x[1]]])
-  #params =  unlist(sapply(colnames,function(x) parNames[[x[1]]]))
   params =  unlist(sapply(colnames,function(x) x[1]))
   wells =  sapply(colnames,function(x) x[2])
   platforms = sapply(wells,getPlatformName)
-  #reducedData = sapply(reducedData,function (x) x*10^-9)
-  # calc yearly diff
-  #getParName(procNames[1])
-  reducedData = sapply(procNames,function(x) { 
+  ## sclae and diff the production
+  reducedData = sapply(procCols,function(x) { 
     par = strsplit(x,':')[[1]][1] 
     res = reducedData[,x]
     if(par %in% scalingPars){
@@ -294,18 +297,27 @@ getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
     }
     if(par %in% diffPars){
       res[is.na(res)] = 0
-      res = c(res[1],diff(res))
+      res = c(diff(res),0)
     }
-    
     return(res)
     })
+  reducedData = sapply(procCols,function(x) { 
+    return(round(reducedData[,x],5))
+  })
   reducedData = cbind(years = reducedYears,reducedData)
   reducedData = data.frame(reducedData)
+  
   #browser()
-  cnames = reducedData$years[-1]
-  rnames = names(reducedData)[-1]
+  #combine Pariods
+  #paste0(reducedYears,".P",round(reducedMonts/period))
+  reducedYears+(reducedMonts / 12)
+  #cnames = reducedData$years[-1]
+  #cnames = reducedYears+round((reducedMonts) / 100,2)#[-1]
+  cnames = paste0(reducedYears,sep,(reducedMonts-1) / period+1)#[-1]
+  #dbgmes("years = ",cnames)
+  rnames = names(reducedData)#[-1]
   #params = gsub('Накопленная д','Д', params) 
-  reducedData = t(reducedData[-1,-1])
+  reducedData = t(reducedData)[-1,]
   #rownames(reducedData) = rnames
   reducedData=data.frame(params,wells,platforms,reducedData)
   #browser()
@@ -342,7 +354,7 @@ plotData <- function(data = NULL,pattern=NULL) {
   data = data[id_res,]
   
   dbgmes("data=",dim(data))
-  if(dim(data)[1]<3) return(NULL)
+  if(dim(data)[1]<1) return(NULL)
   platfs = unique(data$platf)
   rem_cols = c(-1,-2)
   #browser()
@@ -566,29 +578,65 @@ server <- function(input, output,session) {
                
      )
      })
-   #input$assignPlatform, {####
+   #input$assignPlatform, ####
+   setPaltf <- function(x="WPAR:1_1",platform=2,wells = NULL) {
+     if(is.null(wells)) return(x)
+     pfw = unlist(strsplit(x,":"))
+     p=pfw[1]
+     wf=unlist(strsplit(pfw[2],"_"))
+     w=wf[2]
+     f=wf[1]
+     #browser()
+     idx = which(wells$well == pfw[2])
+     if( idx>0 & idx %in% input$wells_rows_selected) res = paste0(p,':',platform,'_',w)
+     else res = x;
+     return(res)
+   }
+   
    observeEvent(input$assignPlatform, {
      if(is.null(input$wells_rows_selected)) {
        showNotification("Выберите скважины в списке", type = 'warning')
      } else {
        #browser()
        myReactives$wells$platform[input$wells_rows_selected] = input$platformIdx
+       q=apply(cbind(names(myReactives$data)[-1]),MARGIN = 1, FUN = setPaltf,platform=input$platformIdx,wells = myReactives$wells)
+       names(myReactives$data)[-1] = q
+       
+       colnames = strsplit(x = names(myReactives$data),':')
+       pars = unique(sapply(colnames,function(x) x[1]))
+       names = sapply(pars,function(x) parNames[[x]])
+       wells =  unique(sapply(colnames,function(x) x[2]))
+       platforms = sapply(wells,getPlatformName)
+       myReactives$wells = data.frame(well = wells,platform = as.numeric(platforms))
+       #myReactives$data$
+       rebuildTableData()
      }
    })
-   #input$pars, {####
-   observeEvent(input$pars_rows_selected, {
-   #observeEvent(input$pars, {
+
+   rebuildTableData <- reactive({
+     #observeEvent(input$pars, {
      #browser()
      names = myReactives$pars$name
      names(names) = rownames(myReactives$pars)
      if(is.null(input$pars_rows_selected)) sel_pars = names
      else sel_pars = names[input$pars_rows_selected]
+     #myReactives$wells = data.frame(well = wells,platform = as.numeric(platforms))
+     #myReactives$pars = data.frame(param = pars,name = names)
      myReactives$FilteredData <- getFilteredData(data = myReactives$data ,
-                                                day = 1,#input$startDay,
-                                                mon = 1,#input$startMon,
-                                                pars = sel_pars)
+                                                 day = 1,#input$startDay,
+                                                 mon = 1,#input$startMon,
+                                                 period = as.numeric(input$period),
+                                                 pars = sel_pars)
      myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
      
+   })
+      
+   observeEvent(input$period, {
+     rebuildTableData()
+   })
+   #input$pars, {####
+   observeEvent(input$pars_rows_selected, {
+     rebuildTableData()
    })
    
    # GET DATA ####
