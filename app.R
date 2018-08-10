@@ -277,10 +277,11 @@ getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
   #reducedYears = years[(DP$days == day & DP$mons == mon)]
 
   # get set of check months of 1st day
-  checkDate = (seq(1:floor(12 / period))*period+1) %% 12
+  checkDate = (seq(1:floor(12 / period))*period) %% 12 + 1
   reducedData = DP[(DP$days == 1 & (DP$mons %in% checkDate)),]
   reducedYears = years[(DP$days == 1 & (DP$mons %in% checkDate))]
   reducedMonts = mons[(DP$days == 1 & (DP$mons %in% checkDate))]
+  dbgmes("checkdate=",checkDate)
   #browser()
   
   sep = periodAbbr[which(periodNames == period)]
@@ -345,7 +346,7 @@ setPaletteTransp <- function(colors = NULL ,alpha = 0.5) {
   return(colors)
 }
 
-plotData <- function(data = NULL,pattern=NULL) {
+plotData <- function(data = NULL,pattern=NULL,period = 12) {
   if(is.null(data)) return(NULL)
   
   colnames(data)[1:2] = c('platf','param')
@@ -357,13 +358,21 @@ plotData <- function(data = NULL,pattern=NULL) {
   if(dim(data)[1]<1) return(NULL)
   platfs = unique(data$platf)
   rem_cols = c(-1,-2)
-  #browser()
   data = cbind(data[,-1*rem_cols],apply(data[,rem_cols],MARGIN = c(1,2), 
         FUN = function(x) if(is.na(x)) return(0) else return(x)))
   plotData=list()
-  plotData = data.frame(year = as.numeric(colnames(data)[rem_cols]))
+  #browser()
+  q=colnames(data)[rem_cols]
+  q=apply(cbind(q),1,FUN = function(x) {
+    yp=unlist(strsplit(x = x,split = '\\.'))
+    p = as.numeric(yp[1]) +  (as.numeric(yp[2]))/period/12
+    #browser();
+    return (p)
+  })
+  plotData = data.frame(year = as.numeric(q))
   cols = setPaletteTransp(rainbow(length(unique(data$platf))),alpha = 0.5)
-  
+  #dbgmes("YR=",colnames(data)[rem_cols])
+  #dbgmes("X=",plotData[[1]])
   i=1
   for(row in rownames(data)) {
     if(i>1) q = plotData[i]
@@ -384,6 +393,7 @@ plotData <- function(data = NULL,pattern=NULL) {
   plot(plotData$year,t='l', xlab = "годы" ,ylab = "добыча газа, млрд куб.м / год", 
        ylim = ylim,
        xlim = xlim)
+  grid()
   #par(new = TRUE)
   xx = c(plotData[[1]],rev(plotData[[1]]))
   #browser()
@@ -410,7 +420,7 @@ server <- function(input, output,session) {
    # PLOT DATA ####
    output$distPlot <- renderPlot({
      #browser()
-     plotData(myReactives$FilteredByPlatform,"Добыча газа")
+     plotData(data = myReactives$FilteredByPlatform,pattern = "Добыча газа", period = as.numeric(input$period))
    })
    #dataOutput <- renderDataTable####
    output$dataOutput <- renderDataTable({
@@ -675,6 +685,7 @@ DATE  PAR:WELL  PAR:WELL ...",
        myReactives$FilteredData <- getFilteredData(data = myReactives$data ,
                                                    day = 1,#input$startDay,
                                                    mon = 1,#input$startMon,
+                                                   period = as.numeric(input$period),
                                                    pars = sel_pars)
        myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
        #myReactives$data = reducedData
