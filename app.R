@@ -58,7 +58,7 @@ myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars =
 ui <- fluidPage(
    
    # Application title
-   titlePanel("Своднная добыча"),
+   titlePanel("Сводная добыча"),
    
    # Sidebar with a slider input for number of bins 
    sidebarLayout(
