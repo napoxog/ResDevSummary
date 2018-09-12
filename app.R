@@ -33,8 +33,8 @@ names(parNames) = c ( "WGPT",
 scalingPars = c("WGPT")
 diffPars = c("WGPT","WWPT")
 
-tableTypes = list('periodic','platform')
-names(tableTypes) = c('за период','по кустам')
+tableTypes = list('periodic','platform','total')
+names(tableTypes) = c('за период','по кустам','общая')
 
 dayNames = c(1:31)
 monNames = c(1:12)
@@ -171,7 +171,7 @@ getInOut <- function(x,inwell = T) {
   return(res)
 }
 
-getDataSubset <- function(data = NULL, pattern="", FUN = mean) {
+getDataSubset <- function(data = NULL, pattern="", FUN = mean, total = FALSE) {
   if(is.null(data)) return(NULL)
      
   procCols = colnames(data)[c(-1:-3)]
@@ -179,17 +179,19 @@ getDataSubset <- function(data = NULL, pattern="", FUN = mean) {
   
   prod_data = data[id_res,procCols]
   if(nrow(prod_data)<1) return(NULL)
-  
+  #browser()
+  if(total) {
+    data[id_res,3] = 1
+  }
   filterList = list( unlist(data[id_res,3]),unlist(data[id_res,1]))
   prod_res = aggregate(x = prod_data,by = filterList, FUN = FUN)[,c(-1:-2)]
   factors = aggregate(x = data[id_res,c(3,1)],by = filterList, FUN = getNA)[,c(1:2)]
   prod_res = cbind(factors,prod_res)
-  #browser()
   
   return(prod_res)
 }
 
-getFilteredByPaltform <- function (data = NULL) {
+getFilteredByPaltform <- function (data = NULL, total = FALSE) {
   if(is.null(data)) return(NULL)
   scalingPars = c("WGPT","WWPT")
   factNames=colnames(data)[c(1:3)]
@@ -197,12 +199,12 @@ getFilteredByPaltform <- function (data = NULL) {
   #platforms = as.numeric(unique(data$'куст'))
   #dbgmes("platforms=",platforms)
   #procCols = colnames(data)[c(-1:-3)]
-  #browser()
+  
   #dbgmes("data=",dim(data))
-  prod_gas = getDataSubset(data,pattern = "обыча газа",FUN = getSum)
-  prod_wat = getDataSubset(data,pattern = "обыча воды",FUN = getSum)
-  pres_avg = getDataSubset(data,pattern = "авление",FUN = getAvg)
-  prod_col = getDataSubset(data,pattern = "обыча газа",FUN = getNwells)
+  prod_gas = getDataSubset(data,pattern = "обыча газа",FUN = getSum,total)
+  prod_wat = getDataSubset(data,pattern = "обыча воды",FUN = getSum,total)
+  pres_avg = getDataSubset(data,pattern = "авление",FUN = getAvg,total)
+  prod_col = getDataSubset(data,pattern = "обыча газа",FUN = getNwells,total)
   
   #dbgmes("prod_gas=",(prod_gas[,-2]))
   #dbgmes("prod_wat=",(prod_wat[,-2]))
@@ -224,6 +226,7 @@ getFilteredByPaltform <- function (data = NULL) {
     ## empty other parameters if there is no wells in production 
     procCols = colnames(data)[c(-1:-3)]
     procPlatf = as.numeric(unique(pres_avg[,1]))
+    
     for(ip in procPlatf)
       for(x in procCols) {
         if(prod_col[ip,x]<1) {
@@ -435,6 +438,11 @@ server <- function(input, output,session) {
        widetarget = 1
        datacols = colnames(data)[c(-1:-2)]
      }
+     else if(input$tableMode == 'total') {
+       data = myReactives$TotalPeriodic#filterByPlatform(myReactives$FilteredData)
+       widetarget = 1
+       datacols = colnames(data)[c(-1:-2)]
+     }
      # PLOT MAIN TABLE ####
      #browser()
      if(is.null(data) || nrow(data)<2) return(NULL)
@@ -638,6 +646,7 @@ server <- function(input, output,session) {
                                                  period = as.numeric(input$period),
                                                  pars = sel_pars)
      myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
+     myReactives$TotalPeriodic <- getFilteredByPaltform(myReactives$FilteredData,total = TRUE)
      
    })
       
@@ -688,6 +697,7 @@ DATE  PAR:WELL  PAR:WELL ...",
                                                    period = as.numeric(input$period),
                                                    pars = sel_pars)
        myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
+       myReactives$TotalPeriodic <- getFilteredByPaltform(myReactives$FilteredData,total = TRUE)
        #myReactives$data = reducedData
        #updateDateInput(session = session,
        #                inputId = input$startDate,
@@ -705,9 +715,12 @@ DATE  PAR:WELL  PAR:WELL ...",
        data = myReactives$FilteredData
      else if(input$tableMode == 'platform') 
        data = myReactives$FilteredByPlatform#filterByPlatform(myReactives$FilteredData)
+     else if(input$tableMode == 'total') 
+       data = myReactives$TotalPeriodic
      # Create WorkBook with Sheets 
      write.xlsx(sheetName = 'годовая', showNA=FALSE,x = myReactives$FilteredData, file = fname)
      write.xlsx(sheetName = 'по кустам', showNA=FALSE, append=TRUE ,x = myReactives$FilteredByPlatform, file = fname)
+     write.xlsx(sheetName = 'общая', showNA=FALSE, append=TRUE ,x = myReactives$TotalPeriodic, file = fname)
    }
    
    output$downloadSummary <- downloadHandler(
