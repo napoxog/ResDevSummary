@@ -440,8 +440,8 @@ server <- function(input, output,session) {
      }
      else if(input$tableMode == 'total') {
        data = myReactives$TotalPeriodic#filterByPlatform(myReactives$FilteredData)
-       widetarget = 1
-       datacols = colnames(data)[c(-1:-2)]
+       widetarget = 0
+       datacols = colnames(data)[c(-1)]
      }
      # PLOT MAIN TABLE ####
      #browser()
@@ -466,43 +466,8 @@ server <- function(input, output,session) {
                  #      stateSave = TRUE,
                  pageLength = 30,
                  autoWidth = TRUE
-                 ,columnDefs = list(list(width = '200px', targets = widetarget)
-#                                    ,list(targets = c(4:ncol(data)), render = JS(
-# "function (data,type, row, meta) {
-#  function decimalAdjust(type, value, exp) {
-# if (typeof exp === 'undefined' || +exp === 0) {
-#       return Math[type](value);
-#     }
-# if (!Math.round10) {
-#     Math.round10 = function(value, exp) {
-#       return decimalAdjust('round', value, exp);
-#     };
-#   }console.log(Math.round10(data);
-# return Math.round10(data,-3);"))
-                                   )#,
-                 # columnDefs = list(
-                 #   list(visible = FALSE, targets = c(2:3)),
-                 #   list(orderable = FALSE, className = 'details-control', targets = 0)
-                 # )
+                 ,columnDefs = list(list(width = '200px', targets = widetarget))#,
                )#,
-               # callback = JS("
-               #               table.column(1).nodes().to$().css({cursor: 'pointer'});
-               #               var format = function(d) {
-               #               return '<div style=\"background-color:#eee; padding: .5em;\"> Loc: (X:' +
-               #               Math.round(d[2]) + ' Y:' + Math.round(d[3]) + ')</div>';
-               #               };
-               #               table.on('click', 'td.details-control', function() {
-               #               var td = $(this), row = table.row(td.closest('tr'));
-               #               if (row.child.isShown()) {
-               #               row.child.hide();
-               #               td.html('&oplus;');
-               #               } else {
-               #               row.child(format(row.data())).show();
-               #               td.html('&CircleMinus;');
-               #               }
-               #               });"
-               # 
-               # )
      ) #%>% formatRound(columns = c(4:ncol(data)),digits = 5) #%>% 
        #formatStyle(columns = c(widetarget), '300px') %>% 
        #formatStyle(columns = c(1:ncol(data)), valueColumns = 3,
@@ -697,7 +662,7 @@ DATE  PAR:WELL  PAR:WELL ...",
                                                    period = as.numeric(input$period),
                                                    pars = sel_pars)
        myReactives$FilteredByPlatform <- getFilteredByPaltform(myReactives$FilteredData)
-       myReactives$TotalPeriodic <- getFilteredByPaltform(myReactives$FilteredData,total = TRUE)
+       myReactives$TotalPeriodic <- getFilteredByPaltform(myReactives$FilteredData,total = TRUE)[,-1]
        #myReactives$data = reducedData
        #updateDateInput(session = session,
        #                inputId = input$startDate,
