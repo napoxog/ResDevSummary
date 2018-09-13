@@ -33,8 +33,8 @@ names(parNames) = c ( "WGPT",
 scalingPars = c("WGPT")
 diffPars = c("WGPT","WWPT")
 
-tableTypes = list('periodic','platform','total')
-names(tableTypes) = c('за период','по кустам','общая')
+tableTypes = list('well','platform','total')
+names(tableTypes) = c('по скважинам','по кустам','общая')
 
 dayNames = c(1:31)
 monNames = c(1:12)
@@ -428,7 +428,7 @@ server <- function(input, output,session) {
    #dataOutput <- renderDataTable####
    output$dataOutput <- renderDataTable({
      widetarget = 0
-     if(input$tableMode == 'periodic'){
+     if(input$tableMode == 'well'){
        data = myReactives$FilteredData
        widetarget = 0
        datacols = colnames(data)[c(-1:-3)]
