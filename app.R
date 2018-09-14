@@ -181,7 +181,7 @@ getDataSubset <- function(data = NULL, pattern="", FUN = mean, total = FALSE) {
   if(nrow(prod_data)<1) return(NULL)
   #browser()
   if(total) {
-    data[id_res,3] = 1
+    data[id_res,3] = data[id_res,3][[1]]
   }
   filterList = list( unlist(data[id_res,3]),unlist(data[id_res,1]))
   prod_res = aggregate(x = prod_data,by = filterList, FUN = FUN)[,c(-1:-2)]
@@ -331,7 +331,7 @@ getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
                                      FUN = function(x) parNames[x]))
   #browser()
   colnames(reducedData) = c('Параметр','скважина','куст',cnames)
-  return(reducedData)
+  return(reducedData[,-length(reducedData[1,])])
 }
 
 getPlatformName <- function (x = NULL) {
@@ -676,14 +676,14 @@ DATE  PAR:WELL  PAR:WELL ...",
      return(fn)
    }
    getSaveContent <- function(fname) {
-     if(input$tableMode == 'period') 
+     if(input$tableMode == 'well') 
        data = myReactives$FilteredData
      else if(input$tableMode == 'platform') 
        data = myReactives$FilteredByPlatform#filterByPlatform(myReactives$FilteredData)
      else if(input$tableMode == 'total') 
        data = myReactives$TotalPeriodic
      # Create WorkBook with Sheets 
-     write.xlsx(sheetName = 'годовая', showNA=FALSE,x = myReactives$FilteredData, file = fname)
+     write.xlsx(sheetName = 'по скважинам', showNA=FALSE,x = myReactives$FilteredData, file = fname)
      write.xlsx(sheetName = 'по кустам', showNA=FALSE, append=TRUE ,x = myReactives$FilteredByPlatform, file = fname)
      write.xlsx(sheetName = 'общая', showNA=FALSE, append=TRUE ,x = myReactives$TotalPeriodic, file = fname)
    }
