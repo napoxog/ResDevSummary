@@ -32,6 +32,14 @@ names(parNames) = c ( "WGPT",
 
 scalingPars = c("WGPT")
 diffPars = c("WGPT","WWPT")
+pressPars = c(
+  "WBP9",
+  "WBP5",
+  "WBP4",
+  "WBP3",
+  "WTHP",
+  "WBHP"
+)
 
 tableTypes = list('well','platform','total')
 names(tableTypes) = c('по скважинам','по кустам','общая')
@@ -323,9 +331,30 @@ getFilteredData <- function(data=NULL,day=1,mon=1,period = 12,pars = parNames) {
   #params = gsub('Накопленная д','Д', params) 
   reducedData = t(reducedData)[-1,]
   #rownames(reducedData) = rnames
-  reducedData=data.frame(params,wells,platforms,reducedData)
+  
   #browser()
+  reducedData = data.frame(reducedData)
+  prodIDs = which (params  == 'WGPT')
+  q = lapply(X = seq_along(reducedData),FUN = function(x) { 
+    lapply(X=seq_along(reducedData[,x]),FUN = function(y,x) {
+      if(params[y] %in% pressPars) {
+        #c(x,y)
+        #browser()
+        prodY = intersect(prodIDs , which(wells == wells[y]) )
+        prodV = reducedData[prodY,x]
+        if(prodV <= 0 || is.null(prodV) || is.na(prodV))
+           reducedData[y,x] <<- NA
+        #params[y]
+      }
+      },x)
+    })
+  
+  reducedData=data.frame(params,wells,platforms,reducedData)
   reducedData=reducedData[reducedData$params %in% pars,]
+  
+
+  #browser()
+  #reducedData[setPress & setZero ,c(-1:-3)] = NA
   #reducedData$params = sapply(reducedData$params,function(x) parNames[[x]])
   reducedData$params = unlist(lapply(X = as.character(reducedData$params),
                                      FUN = function(x) parNames[x]))
