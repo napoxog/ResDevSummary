@@ -41,6 +41,9 @@ pressPars = c(
   "WBHP"
 )
 
+xPlotPars = list('pressure','production','other')
+names(xPlotPars) = c('давление','дебет','другое')
+
 tableTypes = list('well','platform','total')
 names(tableTypes) = c('по скважинам','по кустам','общая')
 
@@ -60,7 +63,7 @@ names(periodAbbr) = names(periodNames)
 input_wid = 500
 spacer_wid = 30
 
-myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars = NULL)
+myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars = NULL,xPlotData = NULL)
 
 # Define UI ####
 ui <- fluidPage(
@@ -123,8 +126,16 @@ ui <- fluidPage(
                     ),
         tabPanel(title = "Графики", id = 'plot',
                  plotOutput("distPlot", height = "500px")
+        ),
+        tabPanel(title = "Кросс-плот", id = 'Xplot',
+                 actionButton(label = "Вставить данные из буфера обмена",inputId = "pasteXplotData"),
+                 numericInput(label = 'Доверительный интервал, %', inputId = 'confInterval',value = 5),
+                 selectInput(label = '',inputId = 'xplotPar',choices = xPlotPars),
+                 #dataTableOutput(outputId = 'xPlotDT'),
+                 plotOutput("XPlot", height = "300px")
         )
         )
+        
         )
    )
 )
@@ -722,6 +733,40 @@ DATE  PAR:WELL  PAR:WELL ...",
      contentType = '.asc',
      content = getSaveContent
    )
+   
+   observeEvent(input$pasteXplotData , {
+     myReactives$xPlotData = read.table("clipboard")
+     dbgmes("xplot=",myReactives$xPlotData)
+   })
+   
+   output$xPlotDT <- renderDataTable({
+     dbgmes("xploDT=",myReactives$xPlotData)
+     if(is.null(myReactives$xPlotData)) return(NULL)
+     DT::datatable(myReactives$xPlotData,
+                   height = 10,
+                   class = "compact",
+                   rownames = FALSE,
+                   filter = 'none',
+                   editable = FALSE,
+                   options = list(
+                         pagingType = "simple",
+                         paging = FALSE,
+                         #ColumnRender = prettyNum,
+                         #scrollY = "400px",
+                         #scrollX = "800px",
+                         scrollCollapse = TRUE,
+                         #      stateSave = TRUE,
+                         pageLength = 30#,
+       
+     ))
+   })
+   
+   output$XPlot <- renderPlot({
+     plot(myReactives$xPlotData)
+     #browser()
+     a=max(myReactives$xPlotData$V1)
+     lines(list(x = c(0,a),y = c(0,a)))
+   })
 }
 
 # Run the application 
