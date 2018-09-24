@@ -41,8 +41,8 @@ pressPars = c(
   "WBHP"
 )
 
-xPlotPars = list('pressure','production','other')
-names(xPlotPars) = c('давление','дебет','другое')
+xPlotPars = list('Pressure','Production','other')
+names(xPlotPars) = c('Давление','Дебет','другое')
 
 tableTypes = list('well','platform','total')
 names(tableTypes) = c('по скважинам','по кустам','общая')
@@ -63,11 +63,13 @@ names(periodAbbr) = names(periodNames)
 input_wid = 500
 spacer_wid = 30
 
-myReactives = reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars = NULL,xPlotData = NULL)
+myReactives <- reactiveValues(wells = NULL, platforms = NULL, data = NULL, pars = NULL,xPlotData = NULL)
+
+
 
 # Define UI ####
 ui <- fluidPage(
-   
+
    # Application title
    titlePanel("Сводная добыча"),
    
@@ -106,8 +108,15 @@ ui <- fluidPage(
                              actionButton(label = "Назначить куст",inputId = "assignPlatform"),
                              dataTableOutput(outputId = 'wells')
                              #actionButton("asd","asd")
-                             )
+                             ),
+                    tabPanel(title = "Кросс-плот", id = 'Xplot',
+                             numericInput(label = 'Доверительный интервал, %', inputId = 'confInterval',value = 5,min = 1,max=50,step = 1),
+                             #dataTableOutput(outputId = 'xPlotDT'),
+                             textAreaInput(inputId = "pasteXplotData",label = "Вставьте данные:",rows = 15)
+                             #actionButton(label = "Вставить из буфера обмена",inputId = "pasteXplotData")
+                             
                     )
+        )
         
          # sliderInput("bins",
          #             "Number of bins:",
@@ -128,11 +137,9 @@ ui <- fluidPage(
                  plotOutput("distPlot", height = "500px")
         ),
         tabPanel(title = "Кросс-плот", id = 'Xplot',
-                 actionButton(label = "Вставить данные из буфера обмена",inputId = "pasteXplotData"),
-                 numericInput(label = 'Доверительный интервал, %', inputId = 'confInterval',value = 5),
-                 selectInput(label = '',inputId = 'xplotPar',choices = xPlotPars),
-                 #dataTableOutput(outputId = 'xPlotDT'),
-                 plotOutput("XPlot", height = "300px")
+                 plotOutput("XPlot", height = "500px"),
+                 selectInput(label = '',inputId = 'xplotPar',choices = xPlotPars,width = '150px'),
+                 checkboxInput(inputId = 'xPlotEngLab',label = "English")
         )
         )
         
@@ -460,6 +467,7 @@ options(shiny.host = "0.0.0.0")
 options(shiny.port = 31337)
 
 server <- function(input, output,session) {
+   
    # PLOT DATA ####
    output$distPlot <- renderPlot({
      #browser()
@@ -733,39 +741,70 @@ DATE  PAR:WELL  PAR:WELL ...",
      contentType = '.asc',
      content = getSaveContent
    )
-   
-   observeEvent(input$pasteXplotData , {
-     myReactives$xPlotData = read.table("clipboard")
-     dbgmes("xplot=",myReactives$xPlotData)
+
+   observe({
+     #dbgmes("xplot_paste=",readClipboard())
+     data = try(expr = read_delim(file = paste0('X\tY\n',input$pasteXplotData),delim = '\t'))
+     #browser()
+     if(class(data) != 'data.frame' && prod(dim(data))<4) return (NULL)
+     myReactives$xPlotData = data
+     #browser()
+     errorGate = floor(sd(100-data$Y/data$X*100)*3)
+     updateNumericInput(session,inputId = "confInterval",value = errorGate)
+     #dbgmes("xplot_read=",myReactives$xPlotData)
    })
    
    output$xPlotDT <- renderDataTable({
      dbgmes("xploDT=",myReactives$xPlotData)
+     
      if(is.null(myReactives$xPlotData)) return(NULL)
      DT::datatable(myReactives$xPlotData,
                    height = 10,
                    class = "compact",
                    rownames = FALSE,
                    filter = 'none',
-                   editable = FALSE,
+                   editable = TRUE,
+                   
+                   extensions = 'Buttons',
                    options = list(
                          pagingType = "simple",
-                         paging = FALSE,
+                         #paging = FALSE,
                          #ColumnRender = prettyNum,
                          #scrollY = "400px",
                          #scrollX = "800px",
                          scrollCollapse = TRUE,
+                         #server = FALSE,
+                         dom = 'Bfrtip',buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
                          #      stateSave = TRUE,
-                         pageLength = 30#,
+                         pageLength = 20#,
        
      ))
    })
-   
+   # render XPlot ####
    output$XPlot <- renderPlot({
-     plot(myReactives$xPlotData)
+     #dbgmes("xplot_plot=",myReactives$xPlotData)
+     if(is.null(myReactives$xPlotData)) return(NULL);
      #browser()
-     a=max(myReactives$xPlotData$V1)
+     #dbgmes("xplot_paste=",readClipboard())
+     if(input$xPlotEngLab) label=input$xplotPar
+     else label=names(xPlotPars)[which(xPlotPars==input$xplotPar)]
+     plot(myReactives$xPlotData$X,myReactives$xPlotData$Y,pch=16,xlab = label, ylab = label)
+     grid()
+     a=max(myReactives$xPlotData$X)
      lines(list(x = c(0,a),y = c(0,a)))
+     #browser()
+     a0=a*input$confInterval/100
+     a1=a+a0
+     a0=a-a0
+     polygon(list(x = c(a,0,a),y = c(a1,0,a0)),col = rgb(0,0,0,alpha = 0.1),border = "red")
+
+     a0=a*input$confInterval/300
+     a1=a+a0
+     a0=a-a0
+     #polygon(list(x = c(a,0,a),y = c(a1,0,a0)),col = rgb(0,0,0,alpha = 0.1),border = "green")
+     lines(list(x = c(a,0,a),y = c(a1,0,a0)),col = "blue")
+     mtext(col="blue",text = bquote("1"*sigma),cex = 2)
+     mtext(col="red",text = bquote("           3"*sigma),cex = 2)
    })
 }
 
