@@ -42,7 +42,7 @@ pressPars = c(
 )
 
 xPlotPars = list('Pressure','Production','other')
-names(xPlotPars) = c('Давление','Дебет','другое')
+names(xPlotPars) = c('Давление','Дебит','другое')
 
 tableTypes = list('well','platform','total')
 names(tableTypes) = c('по скважинам','по кустам','общая')
