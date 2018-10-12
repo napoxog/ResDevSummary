@@ -158,6 +158,10 @@ dbgmes <- function (message = "message", expr = NULL, depth = 1) {
   cat(paste0(message,':',capture.output(expr),'\n'))
 }
 
+plotError <- function (message = "Error!!!") {
+  plot(0,0,t="l");text(0,0,paste("ОШИБКА:",message),col = "red")
+}
+
 sumPart <- function (x,y) {
   #dbgmes('y=',y)
   return(sum(x,na.rm = T))
@@ -744,10 +748,16 @@ DATE  PAR:WELL  PAR:WELL ...",
 
    observe({
      #dbgmes("xplot_paste=",readClipboard())
-     data = try(expr = read_delim(file = paste0('X\tY\n',input$pasteXplotData),delim = '\t'))
+     #data = try(expr = read_delim(file = paste0('X\tY\n',input$pasteXplotData),delim = ' \t',trim_ws = T))
+     text = paste0('X\tY\n',input$pasteXplotData)
+     gsub(',','.',text)
+     data = try(expr = read.delim2(text = text,colClasses = list('numeric'),dec = '.',sep=""))
      #browser()
      if(class(data) != 'data.frame' && prod(dim(data))<4) return (NULL)
+     #dbgmes("data=",data)
+     data = na.omit(data)
      myReactives$xPlotData = data
+     
      #browser()
      errorGate = floor(sd(100-data$Y/data$X*100)*3)
      updateNumericInput(session,inputId = "confInterval",value = errorGate)
@@ -783,13 +793,20 @@ DATE  PAR:WELL  PAR:WELL ...",
    # render XPlot ####
    output$XPlot <- renderPlot({
      #dbgmes("xplot_plot=",myReactives$xPlotData)
-     if(is.null(myReactives$xPlotData)) return(NULL);
+     if(is.null(myReactives$xPlotData) || 
+        ncol(myReactives$xPlotData)<2||
+        nrow(myReactives$xPlotData)<2) {
+       plotError("Проверьте данные для кросс-плота")
+       return(NULL)
+     }
      #browser()
-     #dbgmes("xplot_paste=",readClipboard())
+     #dbgmes("xplot_paste=",ncol(myReactives$xPlotData))
      if(input$xPlotEngLab) label=input$xplotPar
      else label=names(xPlotPars)[which(xPlotPars==input$xplotPar)]
      plot(myReactives$xPlotData$X,myReactives$xPlotData$Y,pch=16,xlab = label, ylab = label)
      grid()
+     dbgmes("confInterval=",input$confInterval)
+     if(is.na(input$confInterval)) return(NULL)
      a=max(myReactives$xPlotData$X)
      lines(list(x = c(0,a),y = c(0,a)))
      #browser()
